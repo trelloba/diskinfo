@@ -1,0 +1,4 @@
+# Don't include a list of servers. Privacy matters.
+.vscode/
+servers.txt
+
