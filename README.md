@@ -16,6 +16,13 @@ The output of this script is a JSON structure that "walks" all SAS HBAs, their
 PHY links, ports attached to those links, devices attached to ports, LUNs
 attached to ports, and finally devices present at a LUN.
 
+## Sys Tree
+/sys/class/scsi_host/host0/device/phy-0:0/sas_phy/phy-0:0/device/port/end_device-0:0/target0:0:0/0:0:0:0/block/sda/
+
+is_sas => /sys/class/scsi_host/host0/device/sas_host
+
+/sys/class/scsi_host/host2/device/target2\:0\:0/2\:0\:0\:0/block/sdq/
+
 ## Example structure
 
 ```json
@@ -67,8 +74,8 @@ attached to ports, and finally devices present at a LUN.
                 "enable": "1",
                 "sas_address": "0x5fcfffff00000001",
                 "device_type": "none"
-            },
-        },
+            }
+        }
     },
     "portcount": 16,
     "hostcount": 10,
