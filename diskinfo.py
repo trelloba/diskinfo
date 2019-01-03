@@ -1359,15 +1359,15 @@ def main():
                         target_name = os.path.basename(target.device_path)
                         tree['hosts'][hba_name][phy_name][port_name][end_device_name][target_name] = target.to_json()
 
-                        target_luns = glob.glob(os.path.join(end_device.device_path, '[0-9]*'))
-                        if target_luns:
-                            target_luns.sort()
-                            target['luncount'] += target_luns.count()
+                        target_devices = glob.glob(os.path.join(end_device.device_path, '[0-9]*'))
+                        if target_devices:
+                            target_devices.sort()
+                            target['luncount'] += target_devices.count()
 
-                        for target_lun in target_luns:
-                            lun = Lun(target_lun)
-                            target_name = os.path.basename(target.device_path)
-                            tree['hosts'][hba_name][phy_name][port_name][end_device_name][target_name] = target.to_json()
+                        for target_device in target_devices:
+                            device = Device(target_device)
+                            device_name = os.path.basename(device.device_path)
+                            tree['hosts'][hba_name][phy_name][port_name][end_device_name][target_name][device_name] = device.to_json()
 
                         #
                         # # Hba -> Phy -> Port -> Expander -> Phy -> Port -> EndDevice -> Target -> Device -> BlockDevice
