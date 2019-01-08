@@ -1167,7 +1167,7 @@ def main():
                                 if block_devices:
                                     tree['blockdevcount'] += len(block_devices)
                                 for block_device in block_devices:
-                                    tree['hosts'][hba.name][phy.name][port.name][end_device.name][target.name][device.name][block_device.name] = block_devices.dump()
+                                    tree['hosts'][hba.name][phy.name][port.name][end_device.name][target.name][device.name][block_device.name] = block_device.dump()
 
         else:
             # Collect Targets
