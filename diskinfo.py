@@ -9,7 +9,7 @@ import json
 import logging
 import os
 import platform
-import sys
+# import sys
 
 # /sys/class/scsi_host/host0/device/phy-0:0/sas_phy/phy-0:0/device/port/end_device-0:0/target0:0:0/0:0:0:0/block/sda
 # /sys/class/scsi_host/host2/device/target2:0:0/2:0:0:0/block/sdq/
@@ -19,10 +19,9 @@ import sys
 
 class Hba(dict):
     def __init__(self, path, **kwargs):
-        self._device_path = os.path.realpath(os.path.abspath(path))
-        self._data_path = os.path.join(self.device_path, 'scsi_host/', os.path.split(self.device_path)[-1])
+        self._device_path = get_canonical_path(path)
+        self._data_path = os.path.join(self.device_path, 'scsi_host/', os.path.basename(self.device_path))
         super(Hba, self).__init__(**kwargs)
-        self.phys = []
 
     @property
     def active_mode(self):
@@ -165,6 +164,10 @@ class Hba(dict):
         self._device_path = value
 
     @property
+    def name(self):
+        return os.path.basename(self.device_path)
+
+    @property
     def is_sas(self):
         try:
             return os.path.exists(os.path.join(self.device_path, 'sas_host'))
@@ -172,9 +175,8 @@ class Hba(dict):
             logging.warning('Unable to determine if Host is SAS. %s', e)
             return False
 
-    def to_json(self):
-        return json.dumps(
-            {'active_mode': self.active_mode,
+    def dump(self):
+        return {'active_mode': self.active_mode,
              'board_assembly': self.board_assembly,
              'board_name': self.board_name,
              'board_tracer': self.board_tracer,
@@ -204,16 +206,14 @@ class Hba(dict):
              'version_mpi': self.version_mpi,
              'version_nvdata_default': self.version_nvdata_default,
              'version_nvdata_persistent': self.version_nvdata_persistent,
-             'version_product': self.version_product,
-             'phys': [p.to_json() for p in self.phys]})
+             'version_product': self.version_product}
 
 
 class Phy(dict):
     def __init__(self, path, **kwargs):
-        self._device_path = os.path.realpath(os.path.abspath(path))
-        self._data_path = os.path.join(self.device_path, 'sas_phy/', os.path.split(self.device_path)[-1])
+        self._device_path = get_canonical_path(path)
+        self._data_path = os.path.join(self.device_path, 'sas_phy/', os.path.basename(self.device_path))
         super(Phy, self).__init__(**kwargs)
-        self.ports = []
 
     @property
     def device_type(self):
@@ -292,6 +292,10 @@ class Phy(dict):
         self._device_path = value
 
     @property
+    def name(self):
+        return os.path.basename(self.device_path)
+
+    @property
     def is_sas(self):
         try:
             return os.path.exists(os.path.join(self.device_path, 'sas_phy'))
@@ -299,9 +303,8 @@ class Phy(dict):
             logging.warning('Unable to determine if Phy is SAS. %s', e)
             return False
 
-    def to_json(self):
-        return json.dumps(
-            {'device_type': self.device_type,
+    def dump(self):
+        return {'device_type': self.device_type,
              'enable': self.enable,
              'initiator_port_protocols': self.initiator_port_protocols,
              'invalid_dword_count': self.invalid_dword_count,
@@ -315,16 +318,18 @@ class Phy(dict):
              'phy_reset_problem_count': self.phy_reset_problem_count,
              'running_disparity_error_count': self.running_disparity_error_count,
              'sas_address': self.sas_address,
-             'target_port_protocols': self.target_port_protocols,
-             'ports': [p.to_json for p in self.ports]})
+             'target_port_protocols': self.target_port_protocols}
 
 
 class Port(dict):
     def __init__(self, path, **kwargs):
-        self._device_path = os.path.realpath(os.path.abspath(path))
-        self._data_path = os.path.join(self.device_path, 'sas_port/', os.path.split(self.device_path)[-1])
+        self._device_path = get_canonical_path(path)
+        self._data_path = os.path.join(self.device_path, 'sas_port/', os.path.basename(self.device_path))
         super(Port, self).__init__(**kwargs)
-        self.end_devices = []
+
+    @property
+    def expanders(self):
+        return sorted(glob.glob(os.path.join(self.device_path, 'expander-*')))
 
     @property
     def num_phys(self):
@@ -347,6 +352,16 @@ class Port(dict):
         self._device_path = value
 
     @property
+    def has_expander(self):
+        if self.expanders:
+            return True
+        return False
+
+    @property
+    def name(self):
+        return os.path.basename(self.device_path)
+
+    @property
     def is_sas(self):
         try:
             return os.path.exists(os.path.join(self.device_path, 'sas_port'))
@@ -354,17 +369,16 @@ class Port(dict):
             logging.warning('Unable to determine if Port is SAS. %s', e)
             return False
 
-    def to_json(self):
-        return json.dumps({'num_phys': self.num_phys,
-                           'end_devices': self.end_devices})
+    def dump(self):
+        return {'num_phys': self.num_phys}
 
 
 class EndDevice(dict):
     def __init__(self, path, **kwargs):
-        self._device_path = os.path.realpath(os.path.abspath(path))
-        self._data_path = os.path.join(self.device_path, 'sas_device/', os.path.split(self.device_path)[-1])
+        self._device_path = get_canonical_path(path)
+        self._data_path = os.path.join(self.device_path, 'sas_device/', os.path.basename(self.device_path))
+        self._sas_data_path = os.path.join(self.device_path, 'sas_end_device/', os.path.basename(self.device_path))
         super(EndDevice, self).__init__(**kwargs)
-        self.targets = []
 
     @property
     def bay_identifier(self):
@@ -379,12 +393,24 @@ class EndDevice(dict):
         return get_sysfs_data(self.data_path, 'enclosure_identifier')
 
     @property
+    def i_t_nexus_loss_timeout(self):
+        return get_sysfs_data(self.sas_data_path, 'i_t_nexus_loss_timeout')
+
+    @property
     def initiator_port_protocols(self):
         return get_sysfs_data(self.data_path, 'initiator_port_protocols')
 
     @property
+    def initiator_response_timeout(self):
+        return get_sysfs_data(self.sas_data_path, 'initiator_response_timeout')
+
+    @property
     def phy_identifier(self):
         return get_sysfs_data(self.data_path, 'phy_identifier')
+
+    @property
+    def ready_led_meaning(self):
+        return get_sysfs_data(self.sas_data_path, 'ready_led_meaning')
 
     @property
     def sas_address(self):
@@ -397,6 +423,14 @@ class EndDevice(dict):
     @property
     def target_port_protocols(self):
         return get_sysfs_data(self.data_path, 'target_port_protocols')
+
+    @property
+    def tlr_enabled(self):
+        return get_sysfs_data(self.sas_data_path, 'tlr_enabled')
+
+    @property
+    def tlr_supported(self):
+        return get_sysfs_data(self.sas_data_path, 'tlr_supported')
 
     @property
     def data_path(self):
@@ -415,6 +449,14 @@ class EndDevice(dict):
         self._device_path = value
 
     @property
+    def name(self):
+        return os.path.basename(self.device_path)
+
+    @property
+    def sas_data_path(self):
+        return self._sas_data_path
+
+    @property
     def is_sas(self):
         try:
             return os.path.exists(os.path.join(self.device_path, 'sas_device'))
@@ -422,24 +464,26 @@ class EndDevice(dict):
             logging.warning('Unable to determine if EndDevice is SAS. %s', e)
             return False
 
-    def to_json(self):
-        return json.dumps(
-            {'bay_identifier': self.bay_identifier,
+    def dump(self):
+        return {'bay_identifier': self.bay_identifier,
              'device_type': self.device_type,
              'enclosure_identifier': self.enclosure_identifier,
+             'i_t_nexus_loss_timeout': self.i_t_nexus_loss_timeout,
              'initiator_port_protocols': self.initiator_port_protocols,
+             'initiator_response_timeout': self.initiator_response_timeout,
              'phy_identifier': self.phy_identifier,
+             'ready_led_meaning': self.ready_led_meaning,
              'sas_address': self.sas_address,
              'scsi_target_id': self.scsi_target_id,
              'target_port_protocols': self.target_port_protocols,
-             'targets': self.targets})
+             'tlr_enabled': self.tlr_enabled,
+             'tlr_supported': self.tlr_supported}
 
 
 class Target(object):
     def __init__(self, path, **kwargs):
-        self._device_path = os.path.realpath(os.path.abspath(path))
+        self._device_path = get_canonical_path(path)
         super(Target, self).__init__(**kwargs)
-        self.devices = []
 
     @property
     def data_path(self):
@@ -453,15 +497,18 @@ class Target(object):
     def device_path(self, value):
         self._device_path = value
 
-    def to_json(self):
-        return json.dumps({'devices': self.devices})
+    @property
+    def name(self):
+        return os.path.basename(self.device_path)
+
+    def dump(self):
+        return {}
 
 
 class Device(object):
     def __init__(self, path, **kwargs):
-        self._device_path = os.path.realpath(os.path.abspath(path))
+        self._device_path = get_canonical_path(path)
         super(Device, self).__init__(**kwargs)
-        self.block_devices = []
 
     @property
     def device_blocked(self):
@@ -596,6 +643,10 @@ class Device(object):
         self._device_path = value
 
     @property
+    def name(self):
+        return os.path.basename(self.device_path)
+
+    @property
     def is_sas(self):
         try:
             return os.path.exists(os.path.join(self.device_path, 'sas_address'))
@@ -603,44 +654,42 @@ class Device(object):
             logging.warning('Unable to determine if Device is SAS. %s', e)
             return False
 
-    def to_json(self):
-        return json.dumps(
-            {'device_blocked': self.device_blocked,
-             'device_busy': self.device_busy,
-             'dh_state': self.dh_state,
-             'eh_timeout': self.eh_timeout,
-             'evt_capacity_change_reported': self.evt_capacity_change_reported,
-             'evt_inquiry_change_reported': self.evt_inquiry_change_reported,
-             'evt_lun_change_reported': self.evt_lun_change_reported,
-             'evt_media_change': self.evt_media_change,
-             'evt_mode_parameter_change_reported': self.evt_mode_parameter_change_reported,
-             'evt_soft_threshold_reached': self.evt_soft_threshold_reached,
-             'inquiry': self.inquiry,
-             'iocounterbits': self.iocounterbits,
-             'iodone_cnt': self.iodone_cnt,
-             'ioerr_cnt': self.ioerr_cnt,
-             'iorequest_cnt': self.iorequest_cnt,
-             'model': self.model,
-             'queue_depth': self.queue_depth,
-             'queue_ramp_up_period': self.queue_ramp_up_period,
-             'queue_type': self.queue_type,
-             'rev': self.rev,
-             'sas_address': self.sas_address,
-             'sas_device_handle': self.sas_device_handle,
-             'scsi_level': self.scsi_level,
-             'state': self.state,
-             'timeout': self.timeout,
-             'type': self.type,
-             'vendor': self.vendor,
-             'vpd_pg80': self.vpd_pg80,
-             'vpd_pg83': self.vpd_pg83,
-             'wwid': self.wwid,
-             'block_devices': self.block_devices})
+    def dump(self):
+        return {'device_blocked': self.device_blocked,
+                'device_busy': self.device_busy,
+                'dh_state': self.dh_state,
+                'eh_timeout': self.eh_timeout,
+                'evt_capacity_change_reported': self.evt_capacity_change_reported,
+                'evt_inquiry_change_reported': self.evt_inquiry_change_reported,
+                'evt_lun_change_reported': self.evt_lun_change_reported,
+                'evt_media_change': self.evt_media_change,
+                'evt_mode_parameter_change_reported': self.evt_mode_parameter_change_reported,
+                'evt_soft_threshold_reached': self.evt_soft_threshold_reached,
+                'inquiry': self.inquiry,
+                'iocounterbits': self.iocounterbits,
+                'iodone_cnt': self.iodone_cnt,
+                'ioerr_cnt': self.ioerr_cnt,
+                'iorequest_cnt': self.iorequest_cnt,
+                'model': self.model,
+                'queue_depth': self.queue_depth,
+                'queue_ramp_up_period': self.queue_ramp_up_period,
+                'queue_type': self.queue_type,
+                'rev': self.rev,
+                'sas_address': self.sas_address,
+                'sas_device_handle': self.sas_device_handle,
+                'scsi_level': self.scsi_level,
+                'state': self.state,
+                'timeout': self.timeout,
+                'type': self.type,
+                'vendor': self.vendor,
+                'vpd_pg80': self.vpd_pg80,
+                'vpd_pg83': self.vpd_pg83,
+                'wwid': self.wwid}
 
 
 class BlockDevice(object):
     def __init__(self, path, **kwargs):
-        self._device_path = os.path.realpath(os.path.abspath(path))
+        self._device_path = get_canonical_path(path)
         super(BlockDevice, self).__init__(**kwargs)
 
     @property
@@ -700,18 +749,17 @@ class BlockDevice(object):
         self._device_path = value
 
     @property
-    def is_sas(self):
-        try:
-            # TODO: Research what SAS-specific content is created for SAS block
-            #  devices. Currently this fails intentionally.
-            return os.path.exists(os.path.join(self.device_path, 'does_not_exist'))
-        except OSError as e:
-            logging.warning('Unable to determine if BlockDevice is SAS. %s', e)
-            return False
+    def name(self):
+        return os.path.basename(self.device_path)
 
-    def to_json(self):
-        return json.dumps(
-            {'alignment_offset': self.alignment_offset,
+    @property
+    def is_sas(self):
+        # TODO: Research what SAS-specific content is created for SAS block
+        #  devices. Currently this fails intentionally.
+        return False
+
+    def dump(self):
+        return {'alignment_offset': self.alignment_offset,
              'badblocks': self.badblocks,
              'capability': self.capability,
              'dev': self.dev,
@@ -721,15 +769,61 @@ class BlockDevice(object):
              'removable': self.removable,
              'ro': self.ro,
              'size': self.size,
-             'stat': self.stat})
+             'stat': self.stat}
 
 
 class Host(dict):
     def __init__(self, *args, **kwargs):
-        self._device_path = os.path.realpath(os.path.abspath('/sys/devices/virtual/dmi'))
+        self._device_path = get_canonical_path('/sys/devices/virtual/dmi')
         self._data_path = os.path.join(self.device_path, 'id/')
         super(Host, self).__init__(*args, **kwargs)
         self.targets = []
+
+    def __repr__(self):
+        return '<{} hostname={}, '\
+               'bios_date={}, '\
+               'bios_vendor={}, '\
+               'bios_version={}, ' \
+               'board_asset_tag={}, ' \
+               'board_name={}, ' \
+               'board_serial={}, ' \
+               'board_vendor={}, ' \
+               'board_version={}, ' \
+               'chassis_asset_tag={}, ' \
+               'chassis_serial={}, ' \
+               'chassis_type={}, ' \
+               'chassis_vendor={}, ' \
+               'chassis_version={}, ' \
+               'product_family={}, ' \
+               'product_name={}, ' \
+               'product_serial={}, ' \
+               'product_sku={}, ' \
+               'product_uuid={}, ' \
+               'product_version={}, ' \
+               'sys_vendor={}>'.format(
+                    self.__class__.__name__,
+                    self.hostname,
+                    self.bios_date,
+                    self.bios_vendor,
+                    self.bios_version,
+                    self.board_asset_tag,
+                    self.board_name,
+                    self.board_serial,
+                    self.board_vendor,
+                    self.board_version,
+                    self.chassis_asset_tag,
+                    self.chassis_serial,
+                    self.chassis_type,
+                    self.chassis_vendor,
+                    self.chassis_version,
+                    self.product_family,
+                    self.product_name,
+                    self.product_serial,
+                    self.product_sku,
+                    self.product_uuid,
+                    self.product_version,
+                    self.sys_vendor
+                )
 
     @property
     def hostname(self):
@@ -833,7 +927,32 @@ class Host(dict):
     def device_path(self, value):
         self._device_path = value
 
+    def dump(self):
+        return {'bios_date': self.bios_date,
+             'bios_vendor': self.bios_vendor,
+             'bios_version': self.bios_version,
+             'board_asset_tag': self.board_asset_tag,
+             'board_name': self.board_name,
+             'board_serial': self.board_serial,
+             'board_vendor': self.board_vendor,
+             'board_version': self.board_version,
+             'chassis_asset_tag': self.chassis_asset_tag,
+             'chassis_serial': self.chassis_serial,
+             'chassis_type': self.chassis_type,
+             'chassis_vendor': self.chassis_vendor,
+             'chassis_version': self.chassis_version,
+             'product_family': self.product_family,
+             'product_name': self.product_name,
+             'product_serial': self.product_serial,
+             'product_sku': self.product_sku,
+             'product_uuid': self.product_uuid,
+             'product_version': self.product_version,
+             'sys_vendor': self.sys_vendor}
 
+
+#
+# Helper functions
+#
 def get_canonical_path(path):
     return os.path.realpath(os.path.abspath(path))
     
@@ -854,64 +973,110 @@ def get_sysfs_data(devicepath, item):
 #
 # Collect Classes
 #
-def collect_scsi_hbas():
+def collect_hbas():
+    """
+    Return a list of HBA devices found by this host
+    :rtype: list
+    """
     hbas = []
-    for scsi_hba in glob.glob('/sys/bus/scsi/devices/host*'):
-        hba = Hba(path=scsi_hba)
+    for hba_path in sorted(glob.glob('/sys/bus/scsi/devices/host*')):
+        hba = Hba(path=hba_path)
         hbas.append(hba)
 
     return hbas
 
 
-def collect_scsi_host_phys(hba):
+def collect_phys(hba):
+    """
+    Return a list of Phys controlled by hba
+
+    :param hba: An Hba class representing a SAS/SATA HBA
+    :type hba: Hba
+    :rtype: list
+    """
     phys = []
-    for host_phy in glob.glob(os.path.join(hba.device_path, 'phy-*')):
-        phy = Phy(path=host_phy)
+    for phy_path in sorted(glob.glob(os.path.join(hba.device_path, 'phy-*'))):
+        phy = Phy(path=phy_path)
         phys.append(phy)
 
     return phys
 
 
-def collect_scsi_phy_ports(phy):
+def collect_ports(phy):
+    """
+    Return a list of Ports utilizing phy
+
+    :param phy: A Phy class representing a SAS/SATA Phy layer
+    :type phy: Phy
+    :rtype: list
+    """
     ports = []
-    for phy_port in glob.glob(os.path.join(phy.device_path, 'port')):
-        port = Port(path=phy_port)
+    for port_path in sorted(glob.glob(os.path.join(phy.device_path, 'port'))):
+        port = Port(path=port_path)
         ports.append(port)
 
     return ports
 
 
-def collect_scsi_port_end_devices(port):
+def collect_end_devices(port):
+    """
+    Return a list of SAS/SATA end devices connected to port
+
+    :param port: A Port class representing a SAS/SATA port
+    :type port: Port
+    :rtype: list
+    """
     end_devices = []
-    for port_end_device in glob.glob(os.path.join(port.device_path, 'end_device-*')):
-        end_device = EndDevice(path=port_end_device)
+    for end_device_path in sorted(glob.glob(os.path.join(port.device_path, 'end_device-*'))):
+        end_device = EndDevice(path=end_device_path)
         end_devices.append(end_device)
 
     return end_devices
 
 
-def collect_scsi_end_device_targets(end_device):
+def collect_targets(end_device):
+    """
+    Return a list of targets exposed by end_device
+
+    :param end_device: An EndDevice class representing a SAS/SATA port's end device
+    :type end_device: EndDevice
+    :rtype: list
+    """
     targets = []
-    for end_device_target in glob.glob(os.path.join(end_device.device_path, 'target[0-9]')):
-        target = Target(path=end_device_target)
+    for target_path in sorted(glob.glob(os.path.join(end_device.device_path, 'target[0-9]*'))):
+        target = Target(path=target_path)
         targets.append(target)
 
     return targets
 
 
-def collect_scsi_target_devices(target):
+def collect_target_devices(target):
+    """
+    Return a list of devices connected through a target
+
+    :param target: A Target class representing a SAS/SATA port's target
+    :type target: Target
+    :rtype: list
+    """
     devices = []
-    for target_device in glob.glob(os.path.join(target.device_path, '[0-9]*')):
-        device = Device(path=target_device)
+    for target_device_path in sorted(glob.glob(os.path.join(target.device_path, '[0-9]*'))):
+        device = Device(path=target_device_path)
         devices.append(device)
 
     return devices
 
 
-def collect_scsi_block_devices(device):
+def collect_block_devices(device):
+    """
+    Return a list of SCSI block devices behind device
+
+    :param device: A Device class representing a SAS/SATA port's end device
+    :type device: Device
+    :rtype: list
+    """
     block_devices = []
-    for scsi_block_device in glob.glob(os.path.join(device.device_path, 'block/sd*')):
-        device = BlockDevice(path=scsi_block_device)
+    for block_device_path in sorted(glob.glob(os.path.join(device.device_path, 'block/sd*'))):
+        device = BlockDevice(path=block_device_path)
         block_devices.append(device)
 
     return block_devices
@@ -920,6 +1085,120 @@ def collect_scsi_block_devices(device):
 def collect_host_data():
     host = Host()
     return host
+
+
+#
+# Main function walks sysfs, fetching data about the SCSI bus
+#
+def main():
+    logging.basicConfig(
+        format='%(levelname)s: %(message)s',
+        level=logging.ERROR
+    )
+    logging.info('Collecting device information')
+
+    # Use new functions to iterate through classes instead of the kludge of
+    # previous functions.
+
+    #
+    # Hba x -> Phy x -> Port x -> [Expander -> Phy -> Port ->] EndDevice x -> Target x -> Device x -> BlockDevice
+    #
+    tree = {
+        'blockdevcount': 0,
+        'devicecount': 0,
+        'hostcount': 0,
+        'hosts': {},
+        'luncount': 0,
+        'phycount': 0,
+        'portcount': 0,
+        'system': None,
+        'targetcount': 0
+    }
+    host = collect_host_data()
+    tree['system'] = host.dump()
+
+    # Collect Hbas
+    hba_devices = collect_hbas()
+    if hba_devices:
+        tree['hostcount'] = len(hba_devices)
+    for hba in hba_devices:
+        tree['hosts'][hba.name] = hba.dump()
+        # Note: If there are no PHYs, this is a SATA HBA, slip to Targets
+
+        # Collect Phys
+        phys = collect_phys(hba)
+        if phys:
+            tree['phycount'] += len(phys)
+            for phy in phys:
+                tree['hosts'][hba.name][phy.name] = phy.dump()
+
+                # Collect Ports
+                ports = collect_ports(phy)
+                if ports:
+                    tree['portcount'] += len(ports)
+                for port in ports:
+                    tree['hosts'][hba.name][phy.name][port.name] = port.dump()
+
+                    # Collect EndDevices
+                    # TODO: Check for expanders here, which will also have Phy and Port children.
+                    end_devices = collect_end_devices(port)
+                    if end_devices:
+                        tree['devicecount'] += len(end_devices)
+                    for end_device in end_devices:
+                        tree['hosts'][hba.name][phy.name][port.name][end_device.name] = end_device.dump()
+
+                        # Collect Targets
+                        targets = collect_targets(end_device)
+                        if targets:
+                            tree['targetcount'] += len(targets)
+                        for target in targets:
+                            tree['hosts'][hba.name][phy.name][port.name][end_device.name][target.name] = target.dump()
+
+                            # Collect Devices
+                            devices = collect_target_devices(target)
+                            if devices:
+                                tree['luncount'] += len(devices)
+                            for device in devices:
+                                tree['hosts'][hba.name][phy.name][port.name][end_device.name][target.name][device.name] = device.dump()
+
+                                # Collect BlockDevices
+                                block_devices = collect_block_devices(device)
+                                if block_devices:
+                                    tree['blockdevcount'] += len(block_devices)
+                                for block_device in block_devices:
+                                    tree['hosts'][hba.name][phy.name][port.name][end_device.name][target.name][device.name][block_device.name] = block_devices.dump()
+
+        else:
+            # Collect Targets
+            targets = collect_targets(hba)
+            if targets:
+                tree['targetcount'] += len(targets)
+            for target in targets:
+                tree['hosts'][hba.name][target.name] = target.dump()
+
+                # Collect Devices
+                devices = collect_target_devices(target)
+                if devices:
+                    tree['luncount'] += len(devices)
+                for device in devices:
+                    tree['hosts'][hba.name][target.name][device.name] = device.dump()
+
+                    # Collect BlockDevices
+                    block_devices = collect_block_devices(device)
+                    if block_devices:
+                        tree['blockdevcount'] += len(block_devices)
+                    for block_device in block_devices:
+                        tree['hosts'][hba.name][target.name][block_device.name] = block_device.dump()
+
+
+    logging.info('Finished collecting device information')
+    print('##########')
+    print(json.dumps(tree, indent=2, sort_keys=True))
+    print('##########')
+
+
+if __name__ == "__main__":
+    main()
 
 
 #
@@ -1044,7 +1323,7 @@ def get_phy_data(phypath):
     device_type = get_phy_devtype(phypath)
     if device_type:
         data.update({'device_type': get_phy_devtype(phypath)})
-    
+
     enable = get_phy_enable(phypath)
     if enable:
         data.update({'enable': enable})
@@ -1176,9 +1455,9 @@ def get_enddevice_targets(devicepath):
     return glob.glob(os.path.join(devicepath, 'target[0-9]*'))
 
 
-# 
+#
 # LUN Device Data
-# 
+#
 def get_target_luns(targetpath):
     return glob.glob(os.path.join(targetpath, '[0-9]*'))
 
@@ -1235,7 +1514,7 @@ def get_lun_scsilevel(devicepath):
 def get_lun_serial(devicepath):
     serial = filter(str.isalnum, get_sysfs_data(devicepath, 'vpd_pg80'))
     return serial
-    
+
 
 def get_lun_state(devicepath):
     state = get_sysfs_data(devicepath, 'state')
@@ -1262,10 +1541,6 @@ def get_lun_blockdevs(lunpath):
 def get_blockdev_data(devpath):
     data = {}
 
-    badblocks = get_blockdev_badblocks(devpath)
-    if badblocks:
-        data.update({'badblocks': badblocks})
-
     stat = get_blockdev_stat(devpath)
     if stat:
         data.update({'stat': stat})
@@ -1273,132 +1548,7 @@ def get_blockdev_data(devpath):
     return data
 
 
-def get_blockdev_badblocks(devpath):
-    badblocks = get_sysfs_data(devpath, 'badblocks')
-    return badblocks
-
-
 def get_blockdev_stat(devpath):
     stat = get_sysfs_data(devpath, 'stat')
     return stat
 
-
-#
-# Main function walks sysfs, fetching data about the SCSI bus
-#
-def main():
-    logging.basicConfig(
-        format='%(levelname)s: %(message)s',
-        level=logging.ERROR
-    )
-    logging.info('Collecting device information')
-
-    # Use new functions to iterate through classes instead of the kludge of
-    # previous functions.
-
-    tree = {
-        'blockdevcount': 0,
-        'devicecount': 0,
-        'hostcount': 0,
-        'hosts': {},
-        'luncount': 0,
-        'phycount': 0,
-        'portcount': 0,
-        'system': get_system_identifiers(),
-        'targetcount': 0
-    }
-
-    hba_devices = glob.glob('/sys/bus/scsi/devices/host[0-9]*')
-    if hba_devices:
-        hba_devices.sort()
-        tree['hostcount'] = hba_devices.count()
-
-    for hba_device in hba_devices:
-        hba = Hba(hba_device)
-        hba_name = os.path.basename(hba.device_path)
-        tree['hosts'][hba_name] = hba.to_json()
-
-        phy_devices = glob.glob(os.path.join(hba.device_path, 'phy-[0-9]*'))
-        if phy_devices:
-            phy_devices.sort()
-            tree['phycount'] += phy_devices.count()
-
-        for phy_device in phy_devices:
-            phy = Phy(phy_device)
-            phy_name = os.path.basename(phy.device_path)
-            tree['hosts'][hba_name][phy_name] = phy.to_json()
-
-            hba_ports = glob.glob(os.path.join(phy.device_path, 'port'))
-            if hba_ports:
-                hba_ports.sort()
-                tree['portcount'] += hba_ports.count()
-
-            for hba_port in hba_ports:
-                # TODO: Check for expanders here, which will also have Phy and Port children.
-                port = Port(hba_port)
-                port_name = os.path.basename(port.device_path)
-                tree['hosts'][hba_name][phy_name][port_name] = port.to_json()
-
-                port_end_devices = glob.glob(os.path.join(port.device_path, 'end_device-[0-9]*'))
-                if port_end_devices:
-                    port_end_devices.sort()
-                    target['devicecount'] += port_end_devices.count()
-
-                for port_end_device in port_end_devices:
-                    end_device = EndDevice(port_end_device)
-                    end_device_name = os.path.basename(end_device.device_path)
-                    tree['hosts'][hba_name][phy_name][port_name][end_device_name] = end_device.to_json()
-
-                    port_targets = glob.glob(os.path.join(end_device.device_path, 'target[0-9]*'))
-                    if port_targets:
-                        port_targets.sort()
-                        target['targetcount'] += port_targets.count()
-
-                    for port_target in port_targets:
-                        target = Target(port_target)
-                        target_name = os.path.basename(target.device_path)
-                        tree['hosts'][hba_name][phy_name][port_name][end_device_name][target_name] = target.to_json()
-
-                        target_devices = glob.glob(os.path.join(end_device.device_path, '[0-9]*'))
-                        if target_devices:
-                            target_devices.sort()
-                            target['luncount'] += target_devices.count()
-
-                        for target_device in target_devices:
-                            device = Device(target_device)
-                            device_name = os.path.basename(device.device_path)
-                            tree['hosts'][hba_name][phy_name][port_name][end_device_name][target_name][device_name] = device.to_json()
-
-                        #
-                        # # Hba -> Phy -> Port -> Expander -> Phy -> Port -> EndDevice -> Target -> Device -> BlockDevice
-                        #
-                        luns = get_target_luns(target)
-                        if luns:
-                            luns.sort()
-                        for lun in luns:
-                            tree['luncount'] += 1
-                            lun_name = os.path.basename(
-                                get_canonical_path(lun)
-                            )
-                            tree['hosts'][host_name][phy_name][port_name][enddev_name][target_name][lun_name] = \
-                                get_lun_data(lun)
-
-                            blockdevs = get_lun_blockdevs(lun)
-                            if blockdevs:
-                                blockdevs.sort()
-                            for blockdev in blockdevs:
-                                tree['blockdevcount'] += 1
-                                blockdev_name = os.path.basename(
-                                    get_canonical_path(blockdev)
-                                )
-                                tree['hosts'][host_name][phy_name][port_name][enddev_name][target_name][lun_name][blockdev_name] = \
-                                    get_blockdev_data(blockdev)
-
-    logging.info('Finished collecting device information')
-    print('##########')
-    print(json.dumps(tree, indent=2, sort_keys=True))
-    print('##########')
-
-
-if __name__ == "__main__":
-    main()
