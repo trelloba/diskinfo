@@ -1,4 +1,5 @@
 # Don't include a list of servers. Privacy matters.
+.idea/
 .vscode/
 servers.txt
 
