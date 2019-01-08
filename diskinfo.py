@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import platform
+import re
 # import sys
 
 # Hba -> Phy -> Port -> Expander -> Phy -> Port -> EndDevice -> Target -> Device -> BlockDevice
@@ -959,10 +960,12 @@ def get_sysfs_data(devicepath, item):
     itempath = os.path.join(devicepath, item)
     logging.debug('Reading %s', itempath)
     try:
-        itemfile = open(file=itempath, mode='r')
-        iremdata = itemfile.read()
+        itemfile = open(itempath, mode='r')
+        itemdata = itemfile.read()
         itemfile.close()
-        return iremdata.strip()
+        itemdata = re.sub(r'[^\w\s]+','', itemdata)
+        itemdata = re.sub(r'\s{2,}',' ', itemdata).strip()
+        return itemdata
     except Exception as e:
         logging.warning('Unable to read %s from %s. %s', item, devicepath, e)
         return None
